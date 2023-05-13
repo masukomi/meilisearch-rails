@@ -49,6 +49,20 @@ MEILISEARCH_HOST="http://127.0.0.1:7700"
 MEILISEARCH_API_KEY="masterKey"
 ```
 
+These can be set in a`.env` file which will be loaded in the development and test environments. 
+
+If you're running meilisearch without docker you'll need a different master key. To obtain a master key launch `meilisearch` with no arguments. It'll print a new master key in the output. Copy that, put it in your environment, then kill, and relaunch meilisearch with `meilisearch --master-key <my new master key>`
+
+In order to detach it from the terminal it's run in (so that it won't quit when you close it), you can do the following:
+
+```bash
+# launch it
+meilisearch --master-key <my master key> &; disown
+
+# stop it
+killall meilisearch
+```
+
 Each PR should pass the tests to be accepted.
 
 ```bash

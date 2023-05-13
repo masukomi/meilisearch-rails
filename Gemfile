@@ -6,6 +6,10 @@ gemspec
 
 gem 'rubysl', '~> 2.0', platform: :rbx if defined?(RUBY_ENGINE) && RUBY_ENGINE == 'rbx'
 
+group :development, :test do
+  gem 'dotenv', '~> 2.7', '>= 2.7.6'
+end
+
 group :development do
   gem 'rubocop', '1.27.0'
   gem 'rubocop-rails', '2.13.2'
@@ -36,7 +40,6 @@ group :test do
   gem 'threads'
 
   gem 'byebug'
-  gem 'dotenv', '~> 2.7', '>= 2.7.6'
   gem 'faker', '~> 2.17'
   gem 'kaminari'
   gem 'will_paginate', '>= 2.3.15'
