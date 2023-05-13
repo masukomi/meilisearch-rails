@@ -19,12 +19,14 @@ group :test do
   gem 'active_model_serializers'
   gem 'rails', "~> #{rails_version}"
   gem 'sequel', sequel_version
+  gem 'mongoid'
 
-  if Gem::Version.new(rails_version) >= Gem::Version.new('6.0')
-    gem 'sqlite3', '~> 1.4.0', platform: %i[rbx ruby]
-  else
-    gem 'sqlite3', '< 1.4.0', platform: %i[rbx ruby]
-  end
+  gem 'sqlite3'
+  # if Gem::Version.new(rails_version) >= Gem::Version.new('6.0')
+  #   gem 'sqlite3', '~> 1.4.0', platform: %i[rbx ruby]
+  # else
+  #   gem 'sqlite3', '< 1.4.0', platform: %i[rbx ruby]
+  # end
 
   gem 'activerecord-jdbc-adapter', platform: :jruby
   gem 'activerecord-jdbcsqlite3-adapter', platform: :jruby

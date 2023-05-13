@@ -44,8 +44,6 @@ module MeiliSearch
     class IndexSettings
       DEFAULT_BATCH_SIZE = 1000
 
-      DEFAULT_PRIMARY_KEY = 'id'.freeze
-
       # Meilisearch settings
       OPTIONS = %i[
         searchableAttributes
@@ -252,7 +250,9 @@ module MeiliSearch
     class SafeIndex
       def initialize(index_uid, raise_on_failure, options)
         client = MeiliSearch::Rails.client
-        primary_key = options[:primary_key] || MeiliSearch::Rails::IndexSettings::DEFAULT_PRIMARY_KEY
+        raise "No primary key specified" unless options[:primary_key]
+        primary_key = options[:primary_key]
+
         @raise_on_failure = raise_on_failure.nil? || raise_on_failure
 
         SafeIndex.log_or_throw(nil, @raise_on_failure) do
@@ -483,7 +483,7 @@ module MeiliSearch
             documents = group.map do |d|
               attributes = settings.get_attributes(d)
               attributes = attributes.to_hash unless attributes.instance_of?(Hash)
-              attributes.merge ms_pk(options) => ms_primary_key_of(d, options)
+              attributes.merge({ ms_pk(options) => ms_primary_key_of(d, options) })
             end
             last_task = index.add_documents(documents)
           end
@@ -500,6 +500,8 @@ module MeiliSearch
           else
             final_settings = settings.to_settings
           end
+
+          options = ms_guarantee_primary_key(options)
 
           index = SafeIndex.new(ms_index_uid(options), true, options)
           task = index.update_settings(final_settings)
@@ -616,6 +618,26 @@ module MeiliSearch
         end
       end
 
+
+      def mongoid?
+        return true if defined?(::Mongoid::Document) && include?(::Mongoid::Document)
+        false
+      end
+
+
+      # The condition_key must be a valid column otherwise, the `.where` below will not work
+      # Since we provide a way to customize the primary_key value, `ms_pk(meilisearch_options)` may not
+      # respond with a valid database column. The blocks below prevent that from happening.
+      def has_virtual_pk_for_condition(condition_key)
+        if defined?(::Sequel::Model) && self < Sequel::Model
+          meilisearch_options[:type].columns.map(&:to_s)
+        elsif defined?(::Mongoid::Document) && include?(::Mongoid::Document)
+          meilisearch_options[:type].fields.keys.map(&:to_s)
+        else
+          meilisearch_options[:type].columns.map(&:name).map(&:to_s)
+        end.exclude?(condition_key)
+      end
+
       def ms_search(query, params = {})
         if MeiliSearch::Rails.configuration[:pagination_backend]
           %i[page hitsPerPage hits_per_page].each do |key|
@@ -629,21 +651,10 @@ module MeiliSearch
 
         json = ms_raw_search(query, params)
 
-        # condition_key gets the primary key of the document; looks for "id" on the options
-        condition_key = if defined?(::Mongoid::Document) && include?(::Mongoid::Document)
-                          ms_primary_key_method.in
-                        else
-                          ms_primary_key_method
-                        end
+        # condition_key is the primary key of the document
+        condition_key = ms_primary_key_method
 
-        # The condition_key must be a valid column otherwise, the `.where` below will not work
-        # Since we provide a way to customize the primary_key value, `ms_pk(meilisearch_options)` may not
-        # respond with a valid database column. The blocks below prevent that from happening.
-        has_virtual_column_as_pk = if defined?(::Sequel::Model) && self < Sequel::Model
-                                     meilisearch_options[:type].columns.map(&:to_s).exclude?(condition_key.to_s)
-                                   else
-                                     meilisearch_options[:type].columns.map(&:name).map(&:to_s).exclude?(condition_key.to_s)
-                                   end
+        has_virtual_column_as_pk = has_virtual_pk_for_condition(condition_key.to_s)
 
         condition_key = meilisearch_options[:type].primary_key if has_virtual_column_as_pk
 
@@ -734,8 +745,9 @@ module MeiliSearch
 
         @ms_indexes ||= { true => {}, false => {} }
 
-        options ||= meilisearch_options
+        options ||= ms_guarantee_primary_key(meilisearch_options)
         settings ||= meilisearch_settings
+
 
         return @ms_indexes[MeiliSearch::Rails.active?][settings] if @ms_indexes[MeiliSearch::Rails.active?][settings]
 
@@ -778,7 +790,15 @@ module MeiliSearch
 
       def ms_primary_key_method(options = nil)
         options ||= meilisearch_options
-        options[:primary_key] || options[:id] || :id
+        options[:primary_key] || options[:id] || (mongoid?() ? :_id : :id )
+      end
+
+      alias ms_pk ms_primary_key_method
+
+      def ms_guarantee_primary_key(options)
+        return options if options[:primary_key]
+        options[:primary_key] = ms_primary_key_method(options)
+        options
       end
 
       def ms_primary_key_of(doc, options = nil)
@@ -788,10 +808,6 @@ module MeiliSearch
       def ms_primary_key_changed?(doc, options = nil)
         changed = ms_attribute_changed?(doc, ms_primary_key_method(options))
         changed.nil? ? false : changed
-      end
-
-      def ms_pk(options = nil)
-        options[:primary_key] || MeiliSearch::Rails::IndexSettings::DEFAULT_PRIMARY_KEY
       end
 
       def meilisearch_settings_changed?(prev, current)
